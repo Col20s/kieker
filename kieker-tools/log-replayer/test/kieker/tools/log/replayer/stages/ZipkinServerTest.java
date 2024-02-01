@@ -22,7 +22,7 @@ import java.util.Objects;
 
 public class ZipkinServerTest {
 	
-	private static final Logger LOGGER = LoggerFactory.getLogger(DataSendStage.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(ZipkinServerTest.class);
 
 	private static final String jarPath = "src/test/resources/zipkin-server-3.0.4-exec.jar";
 	
