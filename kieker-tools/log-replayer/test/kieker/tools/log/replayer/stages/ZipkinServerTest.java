@@ -27,7 +27,7 @@ public class ZipkinServerTest {
 
 	private static final String jarPath = "src/test/resources/zipkin-server-3.0.4-exec.jar";
 	
-	private static final String kiekerDataPath = "src/test/resources/kieker results";
+	private static final String kiekerDataPath = "src/test/resources/kieker_results";
 	
 	//private static final String kiekerDataPath = "src/test/resources/kieker-20231110-131058-869910315387-UTC--KIEKER";
 	
@@ -92,15 +92,22 @@ public class ZipkinServerTest {
 
             for (File kiekerDataFile : kiekerDataFiles) {
                 // Replay each Kieker data file
-                replayerMain.run("Replayer", "replayer", new String[]{"--delay", "1", "-i", kiekerDataFile.getAbsolutePath()});
+
+            	String kiekerFolderPath = kiekerDataFile.listFiles()[0].getAbsolutePath();
+            	System.out.println(kiekerFolderPath);
+            	
+                replayerMain.run("Replayer", "replayer", new String[]{"--delay", "1", "-i", kiekerFolderPath});
 
                 // Wait for a reasonable time to allow for spans to be created
-                Thread.sleep(100000); // Adjust the delay as needed
+                Thread.sleep(1000);
 
                 // Check Zipkin API for spans
                 boolean spansCreated = checkZipkinForSpans();
                 assertTrue(spansCreated, "Spans should be created in Zipkin");
             }
+            
+            Thread.sleep(100000); // Sleep to manually check zipkin
+            
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

@@ -78,6 +78,7 @@ public class OpenTelemetryStage extends AbstractConsumerStage<IMonitoringRecord>
 
 	@Override
 	protected void execute(IMonitoringRecord record) throws Exception {
+		System.out.println("Reading span: " + record);
 		if (record instanceof OperationExecutionRecord) {
 			OperationExecutionRecord oer = (OperationExecutionRecord) record;
 			System.out.println("OER: " + oer);
