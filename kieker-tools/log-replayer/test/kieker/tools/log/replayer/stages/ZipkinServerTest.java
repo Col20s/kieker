@@ -96,7 +96,7 @@ public class ZipkinServerTest {
             	String kiekerFolderPath = kiekerDataFile.listFiles()[0].getAbsolutePath();
             	System.out.println(kiekerFolderPath);
             	
-                replayerMain.run("Replayer", "replayer", new String[]{"--delay", "1", "-i", kiekerFolderPath});
+                replayerMain.run("Replayer", "replayer", new String[]{"-n", "-i", kiekerFolderPath});
 
                 // Wait for a reasonable time to allow for spans to be created
                 Thread.sleep(1000);
