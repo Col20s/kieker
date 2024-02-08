@@ -1,12 +1,15 @@
 package kieker.tools.log.replayer.stages;
 
 import java.time.Instant;
+import java.util.Stack;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
 import io.opentelemetry.exporter.zipkin.ZipkinSpanExporter;
@@ -75,6 +78,9 @@ public class OpenTelemetryStage extends AbstractConsumerStage<IMonitoringRecord>
 						.build())
 				.build();
 	}
+	
+	private int lastEss;
+	private Stack<Span> lastSpan = new Stack<Span>();
 
 	@Override
 	protected void execute(IMonitoringRecord record) throws Exception {
@@ -86,31 +92,37 @@ public class OpenTelemetryStage extends AbstractConsumerStage<IMonitoringRecord>
 			Instant startTime = Instant.ofEpochMilli(oer.getTin());
 
 			// Start a new span for the operation
-			Span span = tracer.spanBuilder(oer.getOperationSignature()).setStartTimestamp(startTime).startSpan();
+			SpanBuilder spanBuilder = tracer.spanBuilder(oer.getOperationSignature()).setStartTimestamp(startTime);
+			if (lastSpan != null && oer.getEss() > 0) {
+				spanBuilder.setParent(Context.current().with(lastSpan.peek()));
+			}
+			
+			Span span = spanBuilder.startSpan();
 
 			try (Scope scope = span.makeCurrent()) {
 				span.setAttribute("customAttribute", "5");
-
+				
 			} finally {
 				Instant endTime = Instant.ofEpochMilli(oer.getTout());
 				span.end(endTime);
-
 			}
+			
+			System.out.println("Ess: " + oer.getEss() + " " + lastEss);
+			
+			if (oer.getEss() >= lastEss ) {
+				lastEss++;
+				lastSpan.add(span);
+			} else if (oer.getEss() == lastEss) {
+				lastSpan.pop();
+				lastSpan.add(span);
+			} else {
+				lastEss--;
+				lastSpan.pop();
+				lastSpan.add(span);
+			}
+			
 		} else if (record instanceof KiekerMetadataRecord) {
-			KiekerMetadataRecord kmr = (KiekerMetadataRecord) record;
-			Instant startTime = Instant.ofEpochMilli(kmr.getLoggingTimestamp() / 1_000_000);
-
-			// Start a new span for the operation
-			Span span = tracer.spanBuilder(Integer.toString(kmr.getExperimentId())).setStartTimestamp(startTime).startSpan();
-
-			try (Scope scope = span.makeCurrent()) {
-				span.setAttribute("customAttribute", "5");
-
-			} finally {
-				Instant endTime = Instant.ofEpochMilli(kmr.getTimeOffset() + kmr.getLoggingTimestamp() / 1_000_000);
-				span.end(endTime);
-
-			}
+			System.out.println("Ignore metadata: " + record);
 		}
 	}
 }
