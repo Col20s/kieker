@@ -84,10 +84,10 @@ public class OpenTelemetryStage extends AbstractConsumerStage<IMonitoringRecord>
 
 	@Override
 	protected void execute(IMonitoringRecord record) throws Exception {
-		System.out.println("Reading span: " + record);
+//		System.out.println("Reading span: " + record);
 		if (record instanceof OperationExecutionRecord) {
 			OperationExecutionRecord oer = (OperationExecutionRecord) record;
-			System.out.println("OER: " + oer);
+//			System.out.println("OER: " + oer);
 
 			Instant startTime = Instant.ofEpochMilli(oer.getTin());
 
@@ -107,7 +107,7 @@ public class OpenTelemetryStage extends AbstractConsumerStage<IMonitoringRecord>
 				span.end(endTime);
 			}
 			
-			System.out.println("Ess: " + oer.getEss() + " " + lastEss);
+//			System.out.println("Ess: " + oer.getEss() + " " + lastEss);
 			
 			if (oer.getEss() >= lastEss ) {
 				lastEss++;
