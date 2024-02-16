@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ZipkinServerTest {
@@ -50,7 +51,7 @@ public class ZipkinServerTest {
 			process = Runtime.getRuntime().exec(command);
 
 			// Add a delay to allow Zipkin server to fully start
-			Thread.sleep(5000); // Adjust the delay as needed
+			Thread.sleep(1000); // Adjust the delay as needed
 
 			waitForZipkinStartup();
 		} catch (IOException | InterruptedException e) {
@@ -106,6 +107,9 @@ public class ZipkinServerTest {
 				// Check Zipkin API for spans
 				boolean spansCreated = checkZipkinForSpans();
 				assertTrue(spansCreated, "Spans should be created in Zipkin");
+				boolean spansCreated1 = checkZipkinForSpans();
+				assertTrue(spansCreated1, "Spans should be created in Zipkin with correct signatures and relationships.");
+
 			}
 			
 			Thread.sleep(1000); // Sleep to manually check zipkin
@@ -116,6 +120,8 @@ public class ZipkinServerTest {
 	}
 
 	private boolean checkZipkinForSpans() throws IOException {
+		
+		
 	    // Zipkin API to check if traces were created
 	    URL url = new URL("http://localhost:9411/api/v2/traces");
 	    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -143,12 +149,12 @@ public class ZipkinServerTest {
 	        JsonNode rootNode = objectMapper.readTree(response.toString());
 	        if (!rootNode.isArray() || rootNode.size() == 0) { 
 	            LOGGER.error("No traces found in Zipkin.");
-	            return true;
+	            return false;
 	        }
 
 	     // Validate each trace and span according to expected structure and content
 	        for (JsonNode trace : rootNode) {
-	        	if (!trace.isArray() || trace.size() == 0) { // Replace isEmpty() with size() == 0
+	        	if (!trace.isArray() || trace.size() == 0) { 
 	                LOGGER.error("A trace with no spans was found.");
 	                return false;
 	            }
@@ -172,45 +178,56 @@ public class ZipkinServerTest {
 	    // Check for a non-empty name
 	    if (!span.has("name") || span.get("name").asText().isEmpty()) {
 	        LOGGER.error("A span with an empty or missing name was found.");
-	        return true;
+	        return false;
 	    }
 	    
-	    // Verify timestamp format (e.g., "timestamp": "1609459200000")
-	    if (!span.has("timestamp") || !span.get("timestamp").asText().matches("\\d+")) {
+	    // Verify timestamp format
+	    if (!span.has("timestamp") || !Pattern.matches("\\d+", span.get("timestamp").asText())) {
 	        LOGGER.error("Invalid or missing timestamp for span.");
-	        return true;
+	        return false;
 	    }
 	    
-	    // Check for expected span relationships (e.g., parent-child relationship via parentId)
+	    // Check for expected span relationships
 	    if (span.has("parentId") && span.get("parentId").asText().isEmpty()) {
 	        LOGGER.error("Span has an empty parentId, indicating a broken parent-child relationship.");
-	        return true;
+	        return false;
+	    }
+	 // Pattern for validating method signatures
+	 // Validate span name with regex
+	    String methodSignaturePattern = "(public|private|protected)?\\s*(static)?\\s*([\\w.<>\\[\\]]+\\s+)?(([\\w$]+\\.)*[\\w$]+(\\$[\\d]+)?|<init>|lambda\\$[\\w$]+\\$[\\d]+)\\s*\\(((\\s*[\\w$.<>,\\[\\]]+\\s*,?)*?)\\)";
+
+	    Pattern pattern = Pattern.compile(methodSignaturePattern);
+
+	    String spanName = span.get("name").asText();
+	    Matcher matcher = pattern.matcher(spanName);
+	    if (!matcher.matches()) {
+	        LOGGER.error("Span name does not match the expected signature pattern: " + spanName);
+	        return false; // Should return false if validation fails
 	    }
 	    
-	    // Verify expected span names based on Kieker data
-	    Set<String> expectedSpanNames = new HashSet<>(Arrays.asList("spannames", "spanname"));
-	    if (!expectedSpanNames.contains(span.get("name").asText())) {
-	        LOGGER.error("Unexpected span name: " + span.get("name").asText());
-	        return true;
+	    // Validate 'ipv4' and 'serviceName' in 'localEndpoint'
+	    if (!span.has("localEndpoint") || !span.get("localEndpoint").isObject()) {
+	        LOGGER.error("Missing 'localEndpoint' object in span.");
+	        return false;
 	    }
-	    
-	    
-	    // Check for specific tags that should exist based on replayed Kieker data
-	    if (!span.has("tags") || !span.get("tags").has("environment") || 
-	        !span.get("tags").get("environment").asText().equals("test")) {
-	        LOGGER.error("Missing or incorrect 'environment' tag in span.");
-	        return true;
+	    JsonNode localEndpoint = span.get("localEndpoint");
+	    if (!localEndpoint.has("ipv4") || localEndpoint.get("ipv4").asText().isEmpty()) {
+	        LOGGER.error("Missing or incorrect 'ipv4' in 'localEndpoint'.");
+	        return false;
+	    }
+	    if (!localEndpoint.has("serviceName") || localEndpoint.get("serviceName").asText().isEmpty()) {
+	        LOGGER.error("Missing or incorrect 'serviceName' in 'localEndpoint'.");
+	        return false;
 	    }
 
-	    // Check for specific span relationships, like spans related to specific services or operations
-	    if (span.has("kind") && span.get("kind").asText().equals("CLIENT") &&
-	        (!span.has("localEndpoint") || !span.get("localEndpoint").has("serviceName") ||
-	        !span.get("localEndpoint").get("serviceName").asText().equals("expectedServiceName"))) {
-	        LOGGER.error("Span does not have the expected service relationship.");
-	        return true;
+	    // Validate 'traceId'
+	    if (!span.has("traceId") || span.get("traceId").asText().isEmpty()) {
+	        LOGGER.error("Missing 'traceId'.");
+	        return false;
 	    }
 
-	    return true; 
+	    // If all validations pass
+	    return true;
 	}
 
 	
