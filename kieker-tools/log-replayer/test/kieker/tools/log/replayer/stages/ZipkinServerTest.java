@@ -1,5 +1,6 @@
 package kieker.tools.log.replayer.stages;
 
+import org.junit.Assert;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -153,8 +154,7 @@ public class ZipkinServerTest {
 	    try {
 	        JsonNode rootNode = objectMapper.readTree(response.toString());
 	        if (!rootNode.isArray() || rootNode.size() == 0) { 
-	            LOGGER.error("No traces found in Zipkin.");
-	            return false;
+	            Assert.fail("No traces found in Zipkin.");
 	        }
 
 	     // Validate each trace and span according to expected structure and content
@@ -182,20 +182,17 @@ public class ZipkinServerTest {
 	private boolean isValidSpan(JsonNode span) {
 	    // Check for a non-empty name
 	    if (!span.has("name") || span.get("name").asText().isEmpty()) {
-	        LOGGER.error("A span with an empty or missing name was found.");
-	        return false;
+	    	Assert.fail("A span with an empty or missing name was found.");
 	    }
 	    
 	    // Verify timestamp format
 	    if (!span.has("timestamp") || !Pattern.matches("\\d+", span.get("timestamp").asText())) {
-	        LOGGER.error("Invalid or missing timestamp for span.");
-	        return false;
+	    	Assert.fail("Invalid or missing timestamp for span.");
 	    }
 	    
 	    // Check for expected span relationships
 	    if (span.has("parentId") && span.get("parentId").asText().isEmpty()) {
-	        LOGGER.error("Span has an empty parentId, indicating a broken parent-child relationship.");
-	        return false;
+	    	Assert.fail("Span has an empty parentId, indicating a broken parent-child relationship.");
 	    }
 	 // Pattern for validating method signatures
 	 // Validate span name with regex
@@ -206,8 +203,7 @@ public class ZipkinServerTest {
 	    String spanName = span.get("name").asText();
 	    Matcher matcher = pattern.matcher(spanName);
 	    if (!matcher.matches()) {
-	        LOGGER.error("Span name does not match the expected signature pattern: " + spanName);
-	        return false; // Should return false if validation fails
+	    	Assert.fail("Span name does not match the expected signature pattern: " + spanName);
 	    }
 	    
 	    // Validate 'ipv4' and 'serviceName' in 'localEndpoint'
