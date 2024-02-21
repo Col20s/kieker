@@ -50,25 +50,29 @@ public class ZipkinServerTest {
 			LOGGER.info("Command: " + command);
 			process = Runtime.getRuntime().exec(command);
 
-			// Add a delay to allow Zipkin server to fully start
-			Thread.sleep(1000); // Adjust the delay as needed
-
 			waitForZipkinStartup();
+
+			if (!process.isAlive()) {
+				throw new RuntimeException("Zipkin did not start up correctly");
+			}
+
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
 
-	private void waitForZipkinStartup() throws IOException {
+	private void waitForZipkinStartup() throws IOException, InterruptedException {
 		// capture and print the process output
-		InputStream inputStream = process.getInputStream();
-		InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
-		BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-		String line;
-		while ((line = bufferedReader.readLine()) != null) {
-			LOGGER.info(line);
-			if (line.contains("Serving HTTP at")) {
-				// Add an extra check to ensure the server is healthy
+
+		StringBuffer standardOut = new StringBuffer();
+		StreamGobbler stdoutStreamThread = new StreamGobbler(process.getInputStream(), true, standardOut);
+		StreamGobbler stderrStreamThread = new StreamGobbler(process.getErrorStream(), true, standardOut);
+		
+		stdoutStreamThread.start();
+		stderrStreamThread.start();
+
+		for (int i = 0; i < 10 && process.isAlive(); i++) {
+			if (standardOut.toString().contains("Serving HTTP at")) {
 				if (checkZipkinHealth()) {
 					LOGGER.info("Startup finished");
 					return;
@@ -76,6 +80,7 @@ public class ZipkinServerTest {
 					LOGGER.warn("Zipkin server is not healthy. Retrying...");
 				}
 			}
+			Thread.sleep(1000);
 		}
 	}
 
