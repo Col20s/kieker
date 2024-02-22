@@ -163,7 +163,7 @@ public class ZipkinServerTest {
 	            }
 	            for (JsonNode span : trace) {
 	                if (!isValidSpan(span)) {
-	                    return false; // `isValidSpan` encapsulates all span validation logic
+	                    return false; 
 	                }
 	            }
 	        }
@@ -180,51 +180,53 @@ public class ZipkinServerTest {
 	private boolean isValidSpan(JsonNode span) {
 	    // Check for a non-empty name
 	    if (!span.has("name") || span.get("name").asText().isEmpty()) {
-	    	Assert.fail("A span with an empty or missing name was found.");
+	        LOGGER.error("Span name is empty.");
+	        Assert.fail("A span with an empty or missing name was found.");
+	        return false;
 	    }
-	    
+
 	    // Verify timestamp format
-	    if (!span.has("timestamp") || !Pattern.matches("\\d+", span.get("timestamp").asText())) {
-	    	Assert.fail("Invalid or missing timestamp for span.");
+	    String timestamp = span.get("timestamp").asText();
+	    if (!timestamp.matches("\\d+")) {
+	        LOGGER.error("Invalid or missing timestamp for span.");
+	        Assert.fail("Invalid or missing timestamp for span.");
+	        return false;
 	    }
-	    
+
 	    // Check for expected span relationships
 	    if (span.has("parentId") && span.get("parentId").asText().isEmpty()) {
-	    	Assert.fail("Span has an empty parentId, indicating a broken parent-child relationship.");
-	    }
-	    
-	 // Retrieve the span name
-	    String spanName = span.get("name").asText();
-
-	    // Check for a non-empty name
-	    if (spanName.isEmpty()) {
-	        LOGGER.error("Span name is empty.");
-	        Assert.fail("A span with an empty name was found.");
+	        LOGGER.error("Span has an empty parentId, indicating a broken parent-child relationship.");
+	        Assert.fail("Span has an empty parentId, indicating a broken parent-child relationship.");
 	        return false;
 	    }
 
-	    // Check for basic method or constructor signature
-	    boolean hasParentheses = spanName.contains("(") && spanName.contains(")");
+	    // Validate span name structure and content
+	    String spanName = span.get("name").asText().trim();
+	    boolean containsParentheses = spanName.contains("(") && spanName.contains(")");
 	    boolean isConstructor = spanName.contains("<init>");
-	    if (!hasParentheses && !isConstructor) {
-	        LOGGER.error("Span name does not contain a valid method or constructor signature.");
-	        Assert.fail("Span name does not contain a valid method or constructor signature: " + spanName);
+	    boolean validSignature = isValidMethodOrConstructorSignature(spanName) || isConstructor;
+	    if (!containsParentheses && !isConstructor) {
+	        LOGGER.error("Span name does not contain a valid method or constructor signature: " + spanName);
+	        Assert.fail("Span name does not contain a valid method or constructor signature.");
 	        return false;
 	    }
 
-	    
+	    //checks for method signature
+	    if (!isConstructor) {
+	        // Check for space before opening parenthesis for methods
+	        int parenIndex = spanName.indexOf('(');
+	        if (parenIndex <= 0 || spanName.substring(0, parenIndex).endsWith(" ")) {
+	            LOGGER.error("Invalid method signature: " + spanName);
+	            Assert.fail("Invalid method signature.");
+	            return false;
+	        }
+	    }
+
 	    // Validate 'ipv4' and 'serviceName' in 'localEndpoint'
-	    if (!span.has("localEndpoint") || !span.get("localEndpoint").isObject()) {
-	        LOGGER.error("Missing 'localEndpoint' object in span.");
-	        return false;
-	    }
 	    JsonNode localEndpoint = span.get("localEndpoint");
-	    if (!localEndpoint.has("ipv4") || localEndpoint.get("ipv4").asText().isEmpty()) {
-	        LOGGER.error("Missing or incorrect 'ipv4' in 'localEndpoint'.");
-	        return false;
-	    }
-	    if (!localEndpoint.has("serviceName") || localEndpoint.get("serviceName").asText().isEmpty()) {
-	        LOGGER.error("Missing or incorrect 'serviceName' in 'localEndpoint'.");
+	    if (localEndpoint == null || !localEndpoint.has("ipv4") || localEndpoint.get("ipv4").asText().isEmpty() ||
+	        !localEndpoint.has("serviceName") || localEndpoint.get("serviceName").asText().isEmpty()) {
+	        LOGGER.error("Missing or incorrect 'ipv4' or 'serviceName' in 'localEndpoint'.");
 	        return false;
 	    }
 
@@ -235,8 +237,104 @@ public class ZipkinServerTest {
 	    }
 
 	    // If all validations pass
+	   // LOGGER.info("Span name and related properties are valid.");
 	    return true;
 	}
+	
+	private boolean isValidMethodOrConstructorSignature(String spanName) {
+	    // Initial check for basic structure
+	    if (!spanName.contains("(") || !spanName.contains(")")) return false;
+
+	    // Handling lambda expressions and anonymous classes
+	    if (spanName.contains("lambda$") || spanName.contains("$")) {
+	        return containsSpecialMethodName(spanName);
+	    }
+
+	    // Splitting the span name to identify components
+	    String[] components = spanName.split("\\s+");
+
+	    // Detecting visibility modifiers or static keyword
+	    boolean startsWithModifier = spanName.matches("(public|private|protected|static)\\s+.*");
+
+	    // Constructor validation
+	    boolean isConstructor = spanName.contains("<init>");
+	    if (isConstructor) {
+	        return validateConstructor(components);
+	    }
+
+	    // Method validation, including static methods
+	    return validateMethod(components, spanName, startsWithModifier);
+	}
+
+	private boolean validateConstructor(String[] components) {
+	    // Check if the first component is a visibility modifier or a class name
+	    boolean startsWithVisibilityModifier = components[0].matches("public|private|protected");
+	    
+	    // check the preceding class name.
+	    int expectedInitIndex = startsWithVisibilityModifier ? 2 : 1;
+	    boolean validStructure = components.length >= expectedInitIndex && components[expectedInitIndex - 1].equals("<init>");
+
+	    if (!validStructure) {
+	        return false; 
+	    }
+
+	    //Validate class name for constructors with visibility modifier
+	    if (startsWithVisibilityModifier && !isValidClassName(components[1])) {
+	        return false; 
+	    }
+
+	    if (components.length > expectedInitIndex) {
+	        String parameters = extractParameters(components[expectedInitIndex]);
+	        if (!validateParameters(parameters)) {
+	            return false; 	        }
+	    }
+
+	    return true; 
+	}
+
+	private boolean isValidClassName(String className) {
+	    // class name validation logic
+	    // check class names follow Java identifier rules and contain periods for package separation
+	    return className.matches("[a-zA-Z_$][a-zA-Z\\d_$]*(\\.[a-zA-Z_$][a-zA-Z\\d_$]*)*");
+	}
+
+	private String extractParameters(String component) {
+	    // Extract parameter string from component, assuming it follows "<init>(parameters)" format
+	    int startIndex = component.indexOf('(') + 1;
+	    int endIndex = component.indexOf(')');
+	    if (startIndex > 0 && endIndex > startIndex) {
+	        return component.substring(startIndex, endIndex);
+	    }
+	    return ""; 
+	}
+
+	private boolean validateParameters(String parameters) {
+	   
+	    if (parameters.isEmpty()) {
+	        return true; 
+	    }
+	    //pattern check for parameters (extremely simplified)
+	    return parameters.matches("([a-zA-Z_$][a-zA-Z\\d_$]*(\\.[a-zA-Z_$][a-zA-Z\\d_$]*)*(,\\s*)?)+");
+	}
+
+	private boolean validateMethod(String[] components, String spanName, boolean startsWithModifier) {
+	    int parenIndex = spanName.indexOf('(');
+	    if (parenIndex <= 0) return false;
+	    
+	    if (startsWithModifier && !Character.isWhitespace(spanName.charAt(parenIndex - 1))) return false;
+	    
+	    // Checking if the part before the first parenthesis can be a valid method name or return type
+	    String methodNameOrReturnType = spanName.substring(0, parenIndex).trim();
+	    return methodNameOrReturnType.matches("[\\w.$]+");
+	}
+
+	private boolean containsSpecialMethodName(String spanName) {
+	    // Checks for lambda expressions, anonymous classes, or special static method patterns
+		return spanName.contains("lambda$") || 
+		           spanName.matches(".+\\$\\d+\\..+") || 
+		           spanName.contains("static ");
+	}
+
 
 	
 	@AfterEach
